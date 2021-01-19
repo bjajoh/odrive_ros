@@ -21,7 +21,7 @@ import diagnostic_updater, diagnostic_msgs.msg
 import time
 import math
 import traceback
-import Queue
+import queue
 
 from odrive_interface import ODriveInterfaceAPI, ODriveFailure
 from odrive_interface import ChannelBrokenException, ChannelDamagedException
@@ -123,7 +123,7 @@ class ODriveNode(object):
         self.status = "disconnected"
         self.status_pub.publish(self.status)
         
-        self.command_queue = Queue.Queue(maxsize=5)
+        self.command_queue = queue.Queue(maxsize=5)
         self.vel_subscribe = rospy.Subscriber("/cmd_vel", Twist, self.cmd_vel_callback, queue_size=2)
         
         self.publish_diagnostics = True
@@ -380,7 +380,7 @@ class ODriveNode(object):
                 self.fast_timer_comms_active = False                
             try:
                 motor_command = self.command_queue.get_nowait()
-            except Queue.Empty:
+            except queue.Empty:
                 rospy.logerr("Queue was empty??" + traceback.format_exc())
                 return
             
@@ -556,7 +556,7 @@ class ODriveNode(object):
         try:
             drive_command = ('drive', (left_linear_val, right_linear_val))
             self.command_queue.put_nowait(drive_command)
-        except Queue.Full:
+        except queue.Full:
             pass
             
         self.last_cmd_vel_time = rospy.Time.now()

@@ -1,6 +1,5 @@
 import serial
 from serial.serialutil import SerialException
-
 import sys
 import time
 import logging
@@ -21,12 +20,13 @@ ch.setLevel(logging.DEBUG)
 
 default_logger.addHandler(ch)
 
+
 class ODriveFailure(Exception):
     pass
 
 class ODriveInterfaceAPI(object):
     driver = None
-    encoder_cpr = 4096
+    encoder_cpr = 90
     right_axis = None
     left_axis = None
     connected = False
@@ -47,6 +47,11 @@ class ODriveInterfaceAPI(object):
             self.connected = True
             self._preroll_started = False
             self._preroll_completed = True
+        self.AXIS_STATE_CLOSED_LOOP_CONTROL = 8
+        self.AXIS_STATE_SENSORLESS_CONTROL = 5
+        self.CTRL_MODE_VELOCITY_CONTROL = 2
+        self.ENCODER_MODE_HALL = 1
+        self.AXIS_STATE_IDLE = 1
                 
     def __del__(self):
         self.disconnect()
@@ -143,7 +148,7 @@ class ODriveInterfaceAPI(object):
             self.logger.info("Calibrating axis %d..." % i)
             axis.requested_state = AXIS_STATE_FULL_CALIBRATION_SEQUENCE
             time.sleep(1)
-            while axis.current_state != AXIS_STATE_IDLE:
+            while axis.current_state != self.AXIS_STATE_IDLE:
                 time.sleep(0.1)
             if axis.error != 0:
                 self.logger.error("Failed calibration with axis error 0x%x, motor error 0x%x" % (axis.error, axis.motor.error))
@@ -169,7 +174,7 @@ class ODriveInterfaceAPI(object):
         
         if wait:
             for i, axis in enumerate(self.axes):
-                while axis.current_state != AXIS_STATE_IDLE:
+                while axis.current_state != self.AXIS_STATE_IDLE:
                     time.sleep(0.1)
             self._preroll_started = False
             for i, axis in enumerate(self.axes):
@@ -222,13 +227,13 @@ class ODriveInterfaceAPI(object):
     
     def engaged(self):
         if self.driver and hasattr(self, 'axes'):
-            return self.axes[0].current_state == AXIS_STATE_CLOSED_LOOP_CONTROL and self.axes[1].current_state == AXIS_STATE_CLOSED_LOOP_CONTROL
+            return self.axes[0].current_state == self.AXIS_STATE_CLOSED_LOOP_CONTROL and self.axes[1].current_state == self.AXIS_STATE_CLOSED_LOOP_CONTROL
         else:
             return False
     
     def idle(self):
         if self.driver and hasattr(self, 'axes'):
-            return self.axes[0].current_state == AXIS_STATE_IDLE and self.axes[1].current_state == AXIS_STATE_IDLE
+            return self.axes[0].current_state == self.AXIS_STATE_IDLE and self.axes[1].current_state == self.AXIS_STATE_IDLE
         else:
             return False
         
@@ -239,12 +244,23 @@ class ODriveInterfaceAPI(object):
 
         #self.logger.debug("Setting drive mode.")
         for axis in self.axes:
-            axis.controller.vel_setpoint = 0
-            axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
-            axis.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
+            axis.controller.input_vel = 0
+            print(type(axis.requested_state))
+            axis.encoder.config.mode = self.ENCODER_MODE_HALL
+            # axis.encoder.config.ignore_illegal_hall_state = True
+            axis.requested_state = self.AXIS_STATE_CLOSED_LOOP_CONTROL
+            # axis.requested_state = self.AXIS_STATE_SENSORLESS_CONTROL
+            axis.controller.config.control_mode = self.CTRL_MODE_VELOCITY_CONTROL
+
         
         #self.engaged = True
         return True
+
+    def say_hello(self):
+        print("hello")
+
+    def check_encoder_mode_available(self):
+        print(type(self.left_axis.encoder.config.mode))
         
     def release(self):
         if not self.driver:
@@ -252,7 +268,7 @@ class ODriveInterfaceAPI(object):
             return False
         #self.logger.debug("Releasing.")
         for axis in self.axes: 
-            axis.requested_state = AXIS_STATE_IDLE
+            axis.requested_state = self.AXIS_STATE_IDLE
 
         #self.engaged = False
         return True
@@ -262,8 +278,8 @@ class ODriveInterfaceAPI(object):
             self.logger.error("Not connected.")
             return
         #try:
-        self.left_axis.controller.vel_setpoint = left_motor_val
-        self.right_axis.controller.vel_setpoint = -right_motor_val
+        self.axes[0].controller.input_vel = left_motor_val
+        self.axes[1].controller.input_vel = -right_motor_val
         #except (fibre.protocol.ChannelBrokenException, AttributeError) as e:
         #    raise ODriveFailure(str(e))
         
